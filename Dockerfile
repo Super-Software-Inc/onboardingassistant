@@ -32,6 +32,8 @@ ARG UID
 ARG GID
 
 # Set environment variables explicitly
+ARG OPENAI_API_KEY
+ARG ASSISTANT_ID
 ENV ENV=prod \
     PORT=3000 \
     WEBSERVER_PORT=3000 \
@@ -50,15 +52,6 @@ ENV ENV=prod \
 ## Basis URL Config ##
 ENV OLLAMA_BASE_URL="/ollama" \
     OPENAI_API_BASE_URL=""
-
-# Ensure /plugins is mounted correctly for custom functionality
-VOLUME /app/plugins
-
-# Copy plugins for AI Assistant & File Parsing
-COPY plugins/ /app/plugins/
-
-# Expose correct Open WebUI port
-EXPOSE 3000
 
 # Ensure correct user permissions
 WORKDIR /app/backend
@@ -79,9 +72,9 @@ RUN chown -R $UID:$GID /app $HOME
 
 # Install required dependencies
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends git build-essential pandoc gcc netcat-openbsd curl jq && \
-    apt-get install -y --no-install-recommends gcc python3-dev && \
-    apt-get install -y --no-install-recommends ffmpeg libsm6 libxext6 && \
+    apt-get install -y --no-install-recommends \
+    git build-essential pandoc gcc netcat-openbsd curl jq \
+    gcc python3-dev ffmpeg libsm6 libxext6 libgl1 && \
     rm -rf /var/lib/apt/lists/*
 
 # Install Python dependencies
