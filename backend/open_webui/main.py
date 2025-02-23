@@ -1017,16 +1017,24 @@ async def chat_completion(
 
     try:
         client = openai.OpenAI(api_key=OPENAI_API_KEY)
-        
+
         # ✅ Create a thread for the Assistant
         thread = client.beta.threads.create()
         thread_id = thread.id
 
-        # ✅ Send user message to the Assistant
+        # ✅ Get user input
+        user_message = form_data["messages"][-1]["content"]
+
+        # ✅ Perform web search if query contains keywords like "search for", "find", etc.
+        if ENABLE_WEB_SEARCH and any(keyword in user_message.lower() for keyword in ["search for", "find", "lookup"]):
+            search_results = search_web(user_message)
+            user_message += f"\n\n🔎 [Search Results]:\n{search_results}"
+
+        # ✅ Send the (modified) user message to the Assistant
         client.beta.threads.messages.create(
             thread_id=thread_id,
             role="user",
-            content=form_data["messages"][-1]["content"]
+            content=user_message
         )
 
         # ✅ Start the Assistant's response generation
@@ -1041,7 +1049,8 @@ async def chat_completion(
             if run_status.status == "completed":
                 break
             elif run_status.status == "failed":
-                raise Exception("❌ Assistant run failed.")
+                print(f"❌ Assistant run failed: {run_status}")
+                return {"error": "Assistant failed to generate a response."}
 
             # ✅ Prevent infinite loops & reduce CPU usage
             await asyncio.sleep(2)
@@ -1060,7 +1069,6 @@ async def chat_completion(
     except Exception as e:
         print(f"❌ OpenAI Assistant Error: {e}")
         return {"error": str(e)}
-
 
 
 # Alias for chat_completion (Legacy)
@@ -1118,6 +1126,49 @@ async def stop_task_endpoint(task_id: str, user=Depends(get_verified_user)):
 @app.get("/api/tasks")
 async def list_tasks_endpoint(user=Depends(get_verified_user)):
     return {"tasks": list_tasks()}  # Use the function from tasks.py
+
+# ✅ Ensure Web Search is Enabled
+ENABLE_WEB_SEARCH = os.getenv("ENABLE_WEB_SEARCH", "false").lower() == "true"
+SEARCHAPI_API_KEY = os.getenv("SEARCHAPI_API_KEY")  # SerpAPI or another provider
+SERPAPI_API_KEY = os.getenv("SERPAPI_API_KEY")
+
+def search_web(query):
+    """Search the web using an API (SerpAPI, Brave Search, or another provider)."""
+    try:
+        print(f"🔍 Performing web search for: {query}")
+
+        if SERPAPI_API_KEY:
+            url = "https://serpapi.com/search"
+            params = {
+                "q": query,
+                "api_key": SERPAPI_API_KEY,
+                "num": 5,
+            }
+            response = requests.get(url, params=params)
+            response.raise_for_status()
+            data = response.json()
+            results = [item["link"] for item in data.get("organic_results", [])]
+            return "\n".join(results)
+
+        elif SEARCHAPI_API_KEY:
+            url = "https://api.searchapi.io/v1/search"
+            params = {
+                "q": query,
+                "api_key": SEARCHAPI_API_KEY,
+                "num": 5,
+            }
+            response = requests.get(url, params=params)
+            response.raise_for_status()
+            data = response.json()
+            results = [item["link"] for item in data.get("results", [])]
+            return "\n".join(results)
+
+        else:
+            return "⚠️ No web search provider configured."
+
+    except Exception as e:
+        print(f"❌ Web search failed: {e}")
+        return "⚠️ Web search unavailable at the moment."
 
 
 ##################################
