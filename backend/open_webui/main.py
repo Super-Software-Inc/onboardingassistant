@@ -1017,42 +1017,39 @@ async def chat_completion(
 
     try:
         client = openai.OpenAI(api_key=OPENAI_API_KEY)
+        
+        thread = client.beta.threads.create()
+        thread_id = thread.id
+        client.beta.threads.messages.create(
+            thread_id=thread_id,
+            role="user",
+            content=form_data["messages"][-1]["content"]
+        )
 
-thread = client.beta.threads.create()
-thread_id = thread.id
+        run = client.beta.threads.runs.create(
+            thread_id=thread_id,
+            assistant_id=ASSISTANT_ID
+        )
 
-client.beta.threads.messages.create(
-    thread_id=thread_id,
-    role="user",
-    content=form_data["messages"][-1]["content"]
-)
+    while True:
+        run_status = client.beta.threads.runs.retrieve(thread_id=thread_id, run_id=run.id)
+        if run_status.status == "completed":
+            break
 
-run = client.beta.threads.runs.create(
-    thread_id=thread_id,
-    assistant_id=ASSISTANT_ID
-)
+        messages = client.beta.threads.messages.list(thread_id=thread_id)
+        assistant_reply = next(
+            (msg.content[0].text.value for msg in reversed(messages.data) if msg.role == "assistant"),
+            "⚠️ No response from Assistant."
+        )
 
-while True:
-    run_status = client.beta.threads.runs.retrieve(thread_id=thread_id, run_id=run.id)
-    if run_status.status == "completed":
-        break
-
-messages = client.beta.threads.messages.list(thread_id=thread_id)
-assistant_reply = next(
-    (msg.content[0].text.value for msg in reversed(messages.data) if msg.role == "assistant"),
-    "⚠️ No response from Assistant."
-)
-
-return {"response": assistant_reply}
+    return {"response": assistant_reply}
 
         return await process_chat_response(
             request, response, form_data, user, events, metadata, tasks
         )
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(e),
-        )
+except Exception as e:
+         print(f"❌ OpenAI Assistant Error: {e}")
+        return {"error": str(e)}
 
 
 # Alias for chat_completion (Legacy)
